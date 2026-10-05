@@ -1,0 +1,86 @@
+name: RTL8198C SK337 GN866 firmware
+
+on:
+  push:
+    branches: ["sk337-gn866-8198c-build"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout SDK
+        uses: actions/checkout@v4
+      - name: Install build dependencies
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install -y build-essential gcc-multilib g++-multilib libc6-dev-i386 python3
+      - name: Configure RTL8198C 8812/92E GW
+        working-directory: rtl819x
+        run: |
+          cat > .config <<'EOF'
+          CONFIG_BOARD_rtl8198C_8954E=y
+          CONFIG_LINUX_3.10=y
+          CONFIG_BZBOX_busybox-1.13=y
+          CONFIG_RSDK_msdk-4.4.7-mips-EB-3.10-0.9.33-m32t-131227b=y
+          CONFIG_MODEL_RTL8198C_8812_92E_GW=y
+          CONFIG_ARCH_CPU_MIPS=y
+          CONFIG_ARCH_CPU_MIPS24K=y
+          CONFIG_ARCH_32BIT=y
+          CONFIG_ARCH_CPU_EB=y
+          CONFIG_RTL_819X=y
+          CONFIG_RTL_8198C=y
+          CONFIG_RTL_8198C_GW=y
+          CONFIG_LINUXDIR=linux-3.10
+          CONFIG_BOARDDIR=boards/rtl8198C_8954E
+          CONFIG_BZBOXDIR=users/busybox-1.13
+          CONFIG_RSDKDIR=toolchain/msdk-4.4.7-mips-EB-3.10-0.9.33-m32t-131227b
+          CONFIG_MODEL=RTL8198C_8812_92E_GW
+          CONFIG_ROUTER=
+          EOF
+          chmod +x config/genconfig config/setconfig config/hdrconfig config/romfsinst
+          ./config/setconfig
+          test -f linux-3.10/.config
+          test -f users/.config
+          test -f users/busybox-1.13/.config
+      - name: Build SDK
+        working-directory: rtl819x
+        env:
+          PATH: ${{ github.workspace }}/rtl819x/toolchain/msdk-4.4.7-mips-EB-3.10-0.9.33-m32t-131227b/bin:${{ env.PATH }}
+        run: |
+          make -j2 2>&1 | tee ../rtl8198c-build.log
+      - name: Patch SK337 and GN866 hardware settings
+        working-directory: rtl819x
+        run: |
+          test -f target/image/fw.bin
+          python3 - <<'PY'
+          from pathlib import Path
+          import binascii
+          fw = Path("target/image/fw.bin").read_bytes()
+          base = 0x20000
+          size = 0x10000
+          for name in ("sk337", "gn866ac"):
+              hw = binascii.unhexlify(Path(f"../board-data/{name}-hw.hex").read_text().strip())
+              if len(hw) != size:
+                  raise SystemExit(f"{name}: hardware setting is {len(hw):#x}, expected {size:#x}")
+              if base + size > len(fw):
+                  raise SystemExit(f"{name}: fw.bin is too small ({len(fw):#x})")
+              out = bytearray(fw)
+              out[base:base+size] = hw
+              Path(f"target/image/fw-{name}.bin").write_bytes(out)
+          print("Base image:", len(fw), hex(len(fw)))
+          PY
+          sha256sum target/image/fw.bin target/image/fw-sk337.bin target/image/fw-gn866ac.bin
+      - name: Upload firmware artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: rtl8198c-sk337-gn866ac-firmware
+          path: |
+            rtl819x/target/image/fw.bin
+            rtl819x/target/image/fw-sk337.bin
+            rtl819x/target/image/fw-gn866ac.bin
+            rtl819x/target/image/linux.bin
+            rtl819x/target/image/root.bin
+            rtl819x/target/image/vmlinux.elf
+            rtl8198c-build.log
