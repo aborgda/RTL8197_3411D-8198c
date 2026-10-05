@@ -46,9 +46,8 @@ jobs:
           test -f users/busybox-1.13/.config
       - name: Build SDK
         working-directory: rtl819x
-        env:
-          PATH: ${{ github.workspace }}/rtl819x/toolchain/msdk-4.4.7-mips-EB-3.10-0.9.33-m32t-131227b/bin:${{ env.PATH }}
         run: |
+          export PATH="$PWD/toolchain/msdk-4.4.7-mips-EB-3.10-0.9.33-m32t-131227b/bin:$PATH"
           make -j2 2>&1 | tee ../rtl8198c-build.log
       - name: Patch SK337 and GN866 hardware settings
         working-directory: rtl819x
