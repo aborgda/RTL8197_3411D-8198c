@@ -4,6 +4,7 @@ on:
     paths:
       - 'rtl819x/**'
       - '.github/workflows/build-sk337.yml'
+  pull_request:
   workflow_dispatch:
 jobs:
   build:
