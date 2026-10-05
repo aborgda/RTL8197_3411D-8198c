@@ -1,0 +1,1 @@
+SK337 build target: RTL8198C + RTL8192ER + RTL8812AR. Hardware H601 data sourced from the supplied original SK337 flash dump; GN866 H601 reference is also included under boards/rtl8198C_8954E/hw/.
