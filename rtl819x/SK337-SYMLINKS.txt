@@ -1,0 +1,1 @@
+Repository checkout now preserves target and kernel BSP symlinks required by this legacy SDK.
