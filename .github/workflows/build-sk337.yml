@@ -1,0 +1,39 @@
+name: Build SK337 RTL8198C
+on:
+  push:
+    paths:
+      - 'rtl819x/**'
+      - '.github/workflows/build-sk337.yml'
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+        with:
+          platforms: i386
+      - name: Build inside 32-bit userspace
+        run: |
+          docker run --rm --platform linux/386 \
+            -v "$GITHUB_WORKSPACE:/src" -w /src \
+            i386/debian:bookworm bash -lc '
+              set -e
+              apt-get update >/dev/null
+              DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential python3 bc bison flex file rsync cpio >/dev/null
+              cd rtl819x
+              cp .config.SK337 .config
+              cp boards/rtl8198C_8954E/config.linux-3.10.RTL8198C_8812_92E_MP linux-3.10/.config
+              cp boards/rtl8198C_8954E/config.users.RTL8198C_8812_92E_GW users/.config
+              cp boards/rtl8198C_8954E/config.busybox-1.13.RTL8198C_8812_92E_MP users/busybox-1.13/.config
+              make -j2
+              mkdir -p /src/artifacts
+              cp target/image/fw.bin /src/artifacts/SK337-RTL8198C-8192ER-8812AR.bin
+              cp target/image/linux.bin /src/artifacts/SK337-linux.bin
+              cp boards/rtl8198C_8954E/hw/sk337-hw.bin /src/artifacts/SK337-H601-hw.bin
+            '
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SK337-RTL8198C-firmware
+          path: artifacts/
+          if-no-files-found: error
