@@ -1,0 +1,275 @@
+RTL8198C SK337 + GN866 AC - Ubuntu 20.04 BUILD NOTES
+========================================================
+
+TARGETS
+-------
+SK337:
+  SoC  : RTL8198C
+  WiFi : RTL8192ER + RTL8812AR
+
+GN866 AC:
+  SoC  : RTL8198C
+  WiFi : RTL8192ER + RTL8812BRH / RTL8812AR
+
+SOURCE
+------
+GitHub:
+git@github.com:aborgda/RTL8197_3411D-8198c.git
+
+IMPORTANT:
+This repository is the Realtek RTL819x SDK (3.4.11d), not a normal
+upstream OpenWrt tree. The SDK must already contain the RTL8198C board
+support before an OpenWrt-style target can produce a usable firmware.
+
+Ubuntu 20.04 is newer than the old Realtek SDK build environment, so
+32-bit compatibility libraries may be required.
+
+1. INSTALL BUILD TOOLS
+----------------------
+
+sudo dpkg --add-architecture i386
+sudo apt update
+
+sudo apt install -y \
+  git build-essential gcc g++ make bc bison flex \
+  libncurses-dev libssl-dev zlib1g-dev \
+  libelf-dev libc6-dev-i386 \
+  lib32gcc1 lib32stdc++6 lib32z1 \
+  python3 python3-distutils \
+  rsync unzip wget file cpio \
+  gettext pkg-config gawk sed grep \
+  autoconf automake libtool \
+  texinfo
+
+If Ubuntu reports that lib32gcc1 is unavailable:
+  sudo apt install gcc-multilib g++-multilib
+
+2. CLONE THE SDK
+----------------
+cd ~
+git clone git@github.com:aborgda/RTL8197_3411D-8198c.git
+cd RTL8197_3411D-8198c
+
+git status
+git branch -a
+
+3. CHECK THE SDK BEFORE BUILD
+-----------------------------
+find . -maxdepth 3 -type f | grep -Ei '8198|8198c|8812|8192|board|config|image|makefile' | head -200
+find . -type f -name Makefile | head -100
+grep -Rni "8198C" rtl819x 2>/dev/null | head -100
+grep -RniE "RTL8192ER|RTL8192E|RTL8812AR|RTL8812BRH" rtl819x 2>/dev/null | head -100
+
+4. CHECK HOST PREREQUISITES
+---------------------------
+gcc --version
+make --version
+python3 --version
+file /bin/sh
+
+If the Realtek toolchain is included:
+find . -type f -name 'mips*-gcc' -o -name 'gcc' 2>/dev/null | head -100
+
+For every old compiler/toolchain binary found:
+file /PATH/TO/COMPILER
+
+If it says "ELF 32-bit", Ubuntu 20.04 needs the i386 compatibility
+libraries installed above.
+
+5. DO NOT USE FORCE=1 FIRST
+---------------------------
+First run:
+make -j1 V=s
+
+If it stops with:
+  argp.h
+  fts.h
+  obstack.h
+  libintl.h
+
+install:
+sudo apt install -y libargp-dev libfts-dev gettext
+
+If a package name is unavailable on Ubuntu 20.04:
+apt-cache search libargp
+apt-cache search libfts
+
+Then rerun:
+make -j1 V=s
+
+Only use FORCE=1 after fixing normal host dependencies.
+
+6. OPENWRT SOURCE CHECK
+-----------------------
+If the OpenWrt tree is separate:
+cd ~
+git clone https://github.com/openwrt/openwrt.git openwrt-realtek
+cd ~/openwrt-realtek
+
+./scripts/feeds update -a
+./scripts/feeds install -a
+
+Check:
+find target -maxdepth 3 -type d | grep -Ei 'realtek|rtkmips|8198'
+grep -Rni "8198C" target 2>/dev/null | head -100
+grep -Rni "RTL8198C" target 2>/dev/null | head -100
+
+7. TARGET NAMES REQUIRED
+------------------------
+SK337:
+  RTL8198C + RTL8192ER + RTL8812AR
+
+GN866_AC:
+  RTL8198C + RTL8192ER + RTL8812BRH/RTL8812AR
+
+Do NOT create a fake target only by adding a Kconfig symbol.
+A working target also needs matching:
+  - kernel/SoC support
+  - board/platform code
+  - GPIO definitions
+  - Ethernet/PHY setup
+  - PCIe/WiFi setup
+  - flash layout
+  - image Makefile
+  - firmware/header format
+  - bootloader expectations
+  - device profile
+  - default network configuration
+
+8. GPIO / BOARD DATA
+--------------------
+GPIO values must come from the actual SK337/GN866 dump or board SDK.
+Do not copy GPIO numbers from another RTL8198C router unless hardware
+is confirmed identical.
+
+9. WIFI DRIVER CHECK
+--------------------
+find . -type f | grep -Ei '8192er|8192e|8812ar|8812br|8812.*driver' | head -200
+grep -RniE '8192ER|8812AR|8812BRH' . 2>/dev/null | head -200
+
+10. BUILD THE ORIGINAL SDK FIRST
+---------------------------------
+Before trying OpenWrt, prove that the RTL8198C SDK itself builds.
+
+Read:
+  cat INSTALL.txt
+  cat README.txt
+
+If this fork contains the Realtek configuration system:
+  make menuconfig
+
+Select the existing RTL8198C board configuration if present.
+
+Then:
+  make -j1 V=s
+
+For the first successful build use -j1.
+After success, make -j$(nproc) can be tested.
+
+11. OPENWRT BUILD
+-----------------
+cd ~/openwrt-realtek
+make menuconfig
+
+If there is an existing RTL8198C target, select it and save.
+
+Then:
+make defconfig
+make -j1 V=s
+
+If there is NO RTL8198C target in menuconfig, STOP.
+Do not use:
+  CONFIG_TARGET_realtek_rtl8198c=y
+unless the corresponding target files actually exist.
+
+Find the missing target files:
+find target/linux -maxdepth 4 -type f | grep -Ei '8198|realtek'
+
+12. VERIFY TARGET IMAGE
+-----------------------
+find bin -type f | grep -Ei '8198|sk337|gn866|sysupgrade|factory|fw\.bin|linux\.bin|root\.bin'
+du -h bin/* 2>/dev/null
+
+For a verbose clean build:
+make clean
+make -j1 V=s 2>&1 | tee build.log
+
+13. COMMON ERROR: argp.h / fts.h / obstack.h / libintl.h
+-----------------------------------------------------------
+If you see:
+Checking 'argp.h'... failed.
+Checking 'fts.h'... failed.
+Checking 'obstack.h'... failed.
+Checking 'libintl.h'... failed.
+
+Do NOT immediately use FORCE=1.
+
+Run:
+sudo apt update
+sudo apt install -y libargp-dev gettext
+
+Then:
+make -j1 V=s
+
+For any remaining missing header:
+sudo apt install -y apt-file
+sudo apt-file update
+apt-file search /usr/include/HEADER_NAME.h
+
+14. IF THE BUILD SCRIPT DEMANDS OLD GCC
+---------------------------------------
+Do not replace the Realtek MIPS compiler with Ubuntu's host gcc.
+
+Host gcc:
+  builds tools on Ubuntu.
+
+Realtek MIPS gcc:
+  builds RTL8198C firmware/kernel.
+
+Check:
+find . -type f \( -name '*mips*gcc' -o -name 'mips*cc' \) 2>/dev/null
+
+15. FINAL CHECK
+---------------
+[ ] RTL8198C target is selected from a real target definition
+[ ] SK337 board definition exists
+[ ] GN866_AC board definition exists
+[ ] RTL8192ER driver is present
+[ ] RTL8812AR/8812BRH driver is present
+[ ] GPIO values are board-correct
+[ ] flash layout matches the board
+[ ] image Makefile creates the required image
+[ ] kernel builds
+[ ] rootfs builds
+[ ] final firmware image is generated
+[ ] image header/checksum format matches the Realtek bootloader
+
+16. SAVE THE BUILD LOG
+----------------------
+cd ~/openwrt-realtek
+make -j1 V=s 2>&1 | tee build.log
+
+Send:
+  ~/openwrt-realtek/build.log
+
+The first error in build.log is usually the useful one.
+
+17. IMPORTANT FOR SK337 / GN866
+--------------------------------
+Keep separate board profiles even though both use RTL8198C:
+
+SK337
+  RTL8198C
+  RTL8192ER
+  RTL8812AR
+
+GN866_AC
+  RTL8198C
+  RTL8192ER
+  RTL8812BRH / RTL8812AR
+
+Keep separate board GPIO, flash, LED, button, Ethernet/PHY and WiFi
+calibration data unless the original dumps prove they are identical.
+
+END
+===
