@@ -1,0 +1,51 @@
+name: RTL8198C target builds
+
+on:
+  push:
+    branches: [ master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: GN866_AC
+            profile: gn866_ac
+          - name: LG7100
+            profile: lg7100
+          - name: SK337
+            profile: sk337
+    steps:
+      - name: Checkout SDK
+        uses: actions/checkout@v4
+      - name: Install legacy SDK dependencies
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install -y build-essential gcc g++ make bc bison flex gawk gettext libncurses5-dev libssl-dev zlib1g-dev rsync unzip xz-utils file wget python3 perl cpio patch libc6:i386 libstdc++6:i386 zlib1g:i386
+      - name: Prepare target
+        working-directory: rtl819x
+        run: |
+          rm -f .config .oldconfig
+          cp profiles/rtl8198c_${{ matrix.profile }}.config .config
+          chmod +x config/setconfig config/genconfig config/hdrconfig
+          ./config/setconfig defaults
+      - name: Build ${{ matrix.name }}
+        working-directory: rtl819x
+        run: make -j2 V=s
+      - name: Verify output
+        working-directory: rtl819x
+        run: |
+          test -d target/image
+          find target/image -maxdepth 1 -type f -printf '%f %s bytes\n' | sort
+          test -s target/image/fw.bin
+      - name: Upload ${{ matrix.name }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: RTL8198C-${{ matrix.name }}
+          path: |
+            rtl819x/target/image/**
+          if-no-files-found: error
