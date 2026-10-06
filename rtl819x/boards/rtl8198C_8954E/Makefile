@@ -208,7 +208,18 @@ else
 endif
 	$(DIR_TOOLS)/mkromfs USERS_DIR="$(DIR_USERS)" LINUX_DIR="$(DIR_LINUX)" TOOLS_DIR="$(DIR_TOOLS)" TOOLCHAIN_DIR="$(DIR_RSDK)" || exit $$?
 
-image:
+# SK337 hardware settings are taken from the original 32MB flash dump.
+# The build host reconstructs boards/rtl8198C_8954E/hw/sk337-hw.bin from
+# the compressed base64 reference before this target is packaged.
+ifeq ($(CONFIG_MODEL_SK337), y)
+SK337_HW_BIN = $(DIR_ROOT)/boards/rtl8198C_8954E/hw/sk337-hw.bin
+SK337_HW_REF = $(DIR_ROOT)/boards/rtl8198C_8954E/hw/sk337-hw.gz.b64
+$(SK337_HW_BIN): $(SK337_HW_REF)
+	@mkdir -p $(DIR_ROOT)/boards/rtl8198C_8954E/hw
+	@python3 -c 'import base64,gzip; open("$@","wb").write(gzip.decompress(base64.b64decode(open("$<","rb").read())))'
+endif
+
+image: $(SK337_HW_BIN)
 	[ -d $(DIR_IMAGE) ] || mkdir -p $(DIR_IMAGE)
 	rm -rf $(DIR_IMAGE)/* root.bin
 ifdef CONFIG_ROOTFS_SQUASH
@@ -232,7 +243,7 @@ else
 		egrep "^CONFIG_APP_BOA=y" $(DIR_USERS)/.config > BOA.test; \
 		if [ -s BOA.test ] ; then \
 			cp $(DIR_USERS)/boa/html/$(WEBIMAGE_BIN) $(DIR_IMAGE)/$(WEBIMAGE_BIN); \
-			$(MGBIN) -c -o $(FW_BIN) $(ROOT_BIN) $(WEBPAGE_BIN) $(LINUX_BIN); \
+			$(MGBIN) -c -o $(FW_BIN) $(ROOT_BIN) $(WEBPAGE_BIN) $(LINUX_BIN) $(SK337_HW_BIN); \
 			cd $(DIR_USERS)/boa/defconfig; \
 			mv *.dat $(DIR_ROOT)/boards/rtl8198C_8954E/image; \
 			cd -; \
